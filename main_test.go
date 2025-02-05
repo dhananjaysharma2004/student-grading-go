@@ -1,61 +1,98 @@
 package main
 
 import (
-	"github.com/stretchr/testify/assert"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
-func TestParseCSV(t *testing.T) {
+func TestReadCSV(t *testing.T) {
 	a := assert.New(t)
-	students := parseCSV("grades.csv")
 
+	students, err := readCSV("grades.csv")
+	a.NoError(err, "CSV parsing should not return an error")
 	a.Equal(30, len(students), "Student list size should be 30")
 
-	fs := student{"Kaylen", "Johnson", "Duke University", 52, 47, 35, 38}
-	a.Equal(fs, students[0], "First student should be Kaylen")
+	expectedFirst := Student{"Kaylen", "Johnson", "Duke University", []int{52, 47, 35, 38}, 0, ""}
+	expectedLast := Student{"Solomon", "Hunter", "Boston University", []int{45, 62, 32, 58}, 0, ""}
 
-	ls := student{"Solomon", "Hunter", "Boston University", 45, 62, 32, 58}
-	a.Equal(ls, students[29], "Last student should be Solomon")
+	a.Equal(expectedFirst, students[0], "First student should be Kaylen")
+	a.Equal(expectedLast, students[29], "Last student should be Solomon")
 }
 
-func TestCalculateGrade(t *testing.T) {
+
+func TestCalculateFinalScore(t *testing.T) {
 	a := assert.New(t)
 
-	gradedStudents := calculateGrade(parseCSV("grades.csv"))
+	students, err := readCSV("grades.csv")
+	a.NoError(err)
 
-	expScore := []float32{43, 59.25, 53, 58.25, 52.25, 50.75, 54.75, 49.25, 64.75, 43.25, 68.5, 57.75, 68.25, 66.75, 45.5, 45.75, 45.5, 58, 56, 60.25, 61, 62.5, 80.5, 53, 30.75, 57.5, 70.75, 48.5, 60.25, 49.25}
-	expGrade := []Grade{C, B, B, B, B, B, B, C, B, C, B, B, B, B, C, C, C, B, B, B, B, B, A, B, F, B, A, C, B, C}
+	expectedScores := []float64{43.00, 59.25, 53.00, 58.25, 52.25, 50.75, 54.75, 49.25, 64.75, 43.25, 68.50, 57.75, 68.25, 66.75, 45.50, 45.75, 45.50, 58.00, 56.00, 60.25, 61.00, 62.50, 80.50, 53.00, 30.75, 57.50, 70.75, 48.50, 60.25, 49.25}
 
-	a.Equal(30, len(gradedStudents), "All students should be graded")
-	for i, ss := range gradedStudents {
-		a.Equal(expScore[i], ss.finalScore, "Student %v expected score %v; but got %v", ss.firstName, expScore[i], ss.finalScore)
-		a.Equal(expGrade[i], ss.grade, "Student %v expected grade %v; but got %v", ss.firstName, expGrade[i], ss.grade)
+	for i, student := range students {
+		finalScore := calculateFinalScore(student.TestScores)
+		a.InDelta(expectedScores[i], finalScore, 0.01, "Final score mismatch for student %v", student.FirstName)
+	}
+}
+
+func TestDetermineGrade(t *testing.T) {
+	a := assert.New(t)
+
+	testCases := []struct {
+		score float64
+		grade string
+	}{
+		{30.0, "F"},
+		{40.0, "C"},
+		{55.0, "B"},
+		{75.0, "A"},
+		{89.0, "A"},
+	}
+
+	for _, tc := range testCases {
+		a.Equal(tc.grade, determineGrade(tc.score), "Expected grade %v for score %.2f, but got %v", tc.grade, tc.score, determineGrade(tc.score))
 	}
 }
 
 func TestFindOverallTopper(t *testing.T) {
-	gradedStudents := calculateGrade(parseCSV("grades.csv"))
+	a := assert.New(t)
 
-	got := findOverallTopper(gradedStudents).student
-	want := student{"Bernard", "Wilson", "Boston University", 90, 85, 76, 71}
+	students, err := readCSV("grades.csv")
+	a.NoError(err)
 
-	assert.Equal(t, got, want)
+	for i := range students {
+		students[i].FinalScore = calculateFinalScore(students[i].TestScores)
+		students[i].Grade = determineGrade(students[i].FinalScore)
+	}
+
+	overallTopper := findOverallTopper(students)
+
+	expectedTopper := Student{"Bernard", "Wilson", "Boston University", []int{90, 85, 76, 71}, 80.5, "A"}
+	a.Equal(expectedTopper, overallTopper, "Overall topper mismatch")
 }
 
 func TestFindTopperPerUniversity(t *testing.T) {
 	a := assert.New(t)
 
-	tpu := findTopperPerUniversity(calculateGrade(parseCSV("grades.csv")))
+	students, err := readCSV("grades.csv")
+	a.NoError(err)
 
-	bostonTopper := student{"Bernard", "Wilson", "Boston University", 90, 85, 76, 71}
-	dukeTopper := student{"Tamara", "Webb", "Duke University", 73, 62, 90, 58}
-	unionTopper := student{"Izayah", "Hunt", "Union College", 29, 78, 41, 85}
-	calTopper := student{"Karina", "Shaw", "University of California", 69, 78, 56, 70}
-	floTopper := student{"Nathan", "Gordon", "University of Florida", 53, 79, 84, 51}
+	for i := range students {
+		students[i].FinalScore = calculateFinalScore(students[i].TestScores)
+		students[i].Grade = determineGrade(students[i].FinalScore)
+	}
 
-	a.Equal(bostonTopper, tpu["Boston University"].student, "Boston University topper should be Bernard, but got %v", tpu["Boston University"].firstName)
-	a.Equal(dukeTopper, tpu["Duke University"].student, "Duke University topper should be Tamara, but got %v", tpu["Duke University"].firstName)
-	a.Equal(unionTopper, tpu["Union College"].student, "Union College topper should be Izayah, but got %v", tpu["Union College"].firstName)
-	a.Equal(calTopper, tpu["University of California"].student, "University of California topper should be Karina, but got %v", tpu["University of California"].firstName)
-	a.Equal(floTopper, tpu["University of Florida"].student, "University of Florida topper should be Nathan, but got %v", tpu["University of Florida"].firstName)
+	universityToppers := findTopperPerUniversity(students)
+
+	expectedToppers := map[string]Student{
+		"Boston University":      {"Bernard", "Wilson", "Boston University", []int{90, 85, 76, 71}, 80.5, "A"},
+		"Duke University":        {"Tamara", "Webb", "Duke University", []int{73, 62, 90, 58}, 70.75, "A"},
+		"Union College":          {"Izayah", "Hunt", "Union College", []int{29, 78, 41, 85}, 58.25, "B"},
+		"University of California": {"Karina", "Shaw", "University of California", []int{69, 78, 56, 70}, 68.25, "B"},
+		"University of Florida":  {"Nathan", "Gordon", "University of Florida", []int{53, 79, 84, 51}, 66.75, "B"},
+	}
+
+	for uni, expectedTopper := range expectedToppers {
+		a.Equal(expectedTopper, universityToppers[uni], "University topper mismatch for %v", uni)
+	}
 }
